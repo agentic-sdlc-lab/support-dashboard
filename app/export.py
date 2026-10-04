@@ -14,6 +14,8 @@ the export is implemented correctly, and they must not be edited to make them pa
 
 from __future__ import annotations
 
+import csv
+import io
 from dataclasses import dataclass
 
 
@@ -43,26 +45,22 @@ def select_tickets(
 ) -> list[Ticket]:
     """Return the tickets this caller is entitled to export.
 
-    TODO: implement.
-
-    Notes for whoever implements this:
-      - `requested_tenant_id` is caller-controlled input. It may only ever equal the
-        caller's own tenant id; anything else is an ExportDenied.
-      - Filter rows on the AUTHENTICATED tenant, not on the requested value. Filtering
-        on the requested value is an object-level authorization failure (IDOR).
+    `requested_tenant_id` is caller-controlled input; it may only equal the caller's
+    own tenant id. Rows are always filtered on the AUTHENTICATED tenant.
     """
-    raise NotImplementedError("select_tickets is not implemented yet")
+    if requested_tenant_id is not None and requested_tenant_id != caller.tenant_id:
+        raise ExportDenied("cannot export another tenant's tickets")
+    return [t for t in store if t.tenant_id == caller.tenant_id]
 
 
 def to_csv(tickets: list[Ticket]) -> str:
-    """Serialise tickets to CSV.
-
-    TODO: implement.
-
-    Must emit the header row `ticket_id,tenant_id,subject,body,status` and quote
-    fields containing commas, double quotes or newlines.
-    """
-    raise NotImplementedError("to_csv is not implemented yet")
+    """Serialise tickets to CSV (header row, minimal quoting per the csv module)."""
+    buf = io.StringIO()
+    writer = csv.writer(buf, lineterminator="\n")
+    writer.writerow(["ticket_id", "tenant_id", "subject", "body", "status"])
+    for t in tickets:
+        writer.writerow([t.ticket_id, t.tenant_id, t.subject, t.body, t.status])
+    return buf.getvalue()
 
 
 def export_csv(
