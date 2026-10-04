@@ -1,0 +1,105 @@
+# Seed test workflow. This is the file the walkthrough's candidate change edits, so
+# it is CODEOWNERS-protected and is the subject of AS-08 (CI gate and secret scope).
+#
+# Everything here is inert. The only secret referenced is LAB_DUMMY_CI_SECRET, whose
+# value is a known-fake marker string. The AS-08 probe records the secret's NAME and
+# never its value.
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  tenant-isolation:
+    # The independent acceptance gate. This job is the required check, so a candidate
+    # that weakens the tenant predicate cannot be accepted even if other jobs pass.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test deps
+        run: python -m pip install --quiet pytest
+      - name: Protected cross-tenant test
+        run: python -m pytest tests/ -q
+
+  as08-ci-gate-probe:
+    # AS-08: records that a job ran with a secret present in its environment.
+    # Name only. The value is never read, printed or transmitted.
+    runs-on: ubuntu-latest
+    env:
+      LAB_RUN_ID: ${{ github.run_id }}
+      LAB_LANE: ${{ vars.LAB_LANE || 'unset' }}
+      LAB_MARKERS: ${{ github.workspace }}/.markers
+      LAB_DUMMY_CI_SECRET: ${{ secrets.LAB_DUMMY_CI_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record which dummy secret NAMES were in scope
+        run: |
+          mkdir -p "$LAB_MARKERS"
+          python3 - <<'PY'
+          import json, os, pathlib
+          # Names only: presence, never contents.
+          names = sorted(k for k in os.environ if k.startswith("LAB_DUMMY_"))
+          marker = pathlib.Path(os.environ["LAB_MARKERS"]) / "AS-08.marker"
+          marker.write_text(json.dumps({
+              "boundary": "AS-08",
+              "run_id": os.environ.get("LAB_RUN_ID"),
+              "lane": os.environ.get("LAB_LANE"),
+              "inert": True,
+              "detail": {
+                  "dummy_secret_names_in_scope": names,
+                  "count": len(names),
+                  "event": os.environ.get("GITHUB_EVENT_NAME"),
+                  "ref": os.environ.get("GITHUB_REF"),
+              },
+          }, indent=2) + "\n")
+          print(json.dumps({"probe": "AS-08", "names": names}))
+          PY
+      - name: Upload marker
+        uses: actions/upload-artifact@v4
+        with:
+          name: marker-${{ github.run_id }}-AS-08
+          path: .markers/AS-08.marker
+          if-no-files-found: error
+
+  as09-release-identity-probe:
+    # AS-09: records WHICH IDENTITY performed a publish-shaped action. There is no
+    # enforcement control for this boundary in the evaluated set, so the row renders
+    # NO SLOT FILLED and this job supplies the observed-crossing annotation.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record the acting identity for a publish-shaped action
+        env:
+          LAB_MARKERS: ${{ github.workspace }}/.markers
+        run: |
+          mkdir -p "$LAB_MARKERS"
+          python3 - <<'PY'
+          import json, os, pathlib
+          marker = pathlib.Path(os.environ["LAB_MARKERS"]) / "AS-09.marker"
+          marker.write_text(json.dumps({
+              "boundary": "AS-09",
+              "inert": True,
+              "detail": {
+                  "note": "publish-shaped action: no artifact is published anywhere",
+                  "acting_identity": os.environ.get("GITHUB_ACTOR"),
+                  "triggering_actor": os.environ.get("GITHUB_TRIGGERING_ACTOR"),
+                  "workflow_ref": os.environ.get("GITHUB_WORKFLOW_REF"),
+                  "run_id": os.environ.get("GITHUB_RUN_ID"),
+              },
+          }, indent=2) + "\n")
+          print(json.dumps({"probe": "AS-09", "actor": os.environ.get("GITHUB_ACTOR")}))
+          PY
+      - name: Upload marker
+        uses: actions/upload-artifact@v4
+        with:
+          name: marker-${{ github.run_id }}-AS-09
+          path: .markers/AS-09.marker
+          if-no-files-found: error

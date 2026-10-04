@@ -1,0 +1,21 @@
+# Independently owned paths. The point of this file is that whoever edits the
+# application cannot also relax the test that checks it, or the workflow that runs
+# the gate, or the agent configuration that decides what may execute.
+#
+# AS-07 (SCM acceptance) is measured through this file plus branch protection:
+# a candidate touching any path below must be accepted by someone other than the
+# author before it lands.
+
+# The independent authorization requirement.
+/tests/                     @OWNER_PLACEHOLDER
+
+# Executable configuration: the gate itself, and anything that runs in CI.
+/.github/                   @OWNER_PLACEHOLDER
+/.github/workflows/         @OWNER_PLACEHOLDER
+
+# Agent harness configuration. A hook registered here runs with the host's identity,
+# so it is reviewed like code, not like settings.
+/.claude/                   @OWNER_PLACEHOLDER
+
+# This file owns itself.
+/CODEOWNERS                 @OWNER_PLACEHOLDER
