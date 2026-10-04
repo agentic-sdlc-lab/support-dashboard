@@ -7,15 +7,15 @@
 # author before it lands.
 
 # The independent authorization requirement.
-/tests/                     @OWNER_PLACEHOLDER
+/tests/                     @hariprasadpo28
 
 # Executable configuration: the gate itself, and anything that runs in CI.
-/.github/                   @OWNER_PLACEHOLDER
-/.github/workflows/         @OWNER_PLACEHOLDER
+/.github/                   @hariprasadpo28
+/.github/workflows/         @hariprasadpo28
 
 # Agent harness configuration. A hook registered here runs with the host's identity,
 # so it is reviewed like code, not like settings.
-/.claude/                   @OWNER_PLACEHOLDER
+/.claude/                   @hariprasadpo28
 
 # This file owns itself.
-/CODEOWNERS                 @OWNER_PLACEHOLDER
+/CODEOWNERS                 @hariprasadpo28
