@@ -46,7 +46,14 @@ jobs:
           python3 - <<'PY'
           import json, os, pathlib
           # Names only: presence, never contents.
-          names = sorted(k for k in os.environ if k.startswith("LAB_DUMMY_"))
+          names = sorted(k for k in os.environ if k.startswith("LAB_DUMMY_") and os.environ[k])
+          # No secret in scope means no crossing: write NO marker. The boundary is
+          # whether a job could READ a secret, not whether the job ran.
+          if not names:
+              import sys
+              print(json.dumps({"probe": "AS-08", "skipped": True,
+                    "reason": "no dummy secret in scope for this job"}))
+              sys.exit(0)
           marker = pathlib.Path(os.environ["LAB_MARKERS"]) / "AS-08.marker"
           marker.write_text(json.dumps({
               "boundary": "AS-08",
@@ -67,7 +74,7 @@ jobs:
         with:
           name: marker-${{ github.run_id }}-AS-08
           path: .markers/AS-08.marker
-          if-no-files-found: error
+          if-no-files-found: ignore
 
   as09-release-identity-probe:
     # AS-09: records WHICH IDENTITY performed a publish-shaped action. There is no
