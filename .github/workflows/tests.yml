@@ -157,3 +157,5 @@ jobs:
           name: marker-${{ github.run_id }}-AS-07
           path: .markers/AS-07.marker
           if-no-files-found: error
+
+# demo: candidate touching a CODEOWNERS-protected path
