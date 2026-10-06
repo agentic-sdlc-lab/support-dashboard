@@ -1,1 +1,2 @@
 pytest>=8
+safedep-test-pkg==0.0.4
