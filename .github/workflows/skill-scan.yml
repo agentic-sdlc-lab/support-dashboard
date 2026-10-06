@@ -1,0 +1,51 @@
+# Skill / MCP gate. Scans the plugin surface (.claude/ and any .mcp.json) that arrives
+# with a change, and fails the PR on high-signal findings: credential-file access,
+# data exfiltration, undisclosed capability, MCP SSRF, tool poisoning.
+#
+# Runs ai-skill-scanner in --static mode (YAML rules, no LLM key). The shipped action
+# defaults to AI mode and exits 0 when the key is missing (fails open); static mode is
+# the fix. See the lab's docs/SCANNER-NOTES.md.
+name: skill-scan
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fetch the scanner (pinned)
+        run: |
+          git clone --quiet https://github.com/suchithnarayan/ai-skill-scanner /tmp/scanner
+          git -C /tmp/scanner checkout --quiet 665598f233049d62c4631ac220d1595c6492c639
+          pip install --quiet pyyaml rich
+
+      - name: Scan the plugin surface (static, no key)
+        run: |
+          set -o pipefail
+          PYTHONPATH=/tmp/scanner python -m scanner.main .claude \
+            --static --output json --output-file /tmp/scan.json || true
+          python - <<'PY'
+          import json, re, sys
+          d = json.load(open("/tmp/scan.json"))
+          signals = re.compile(r"data-exfiltration|sensitive-file-.*|"
+                               r"alignment-undisclosed-capability|ssrf-risk|"
+                               r"mcp-dangerous-.*|tool-shadow-.*|prompt-injection-.*")
+          hits = [f for f in (d.get("findings") or []) if signals.fullmatch(f.get("rule_id",""))]
+          for f in hits:
+              print(f"::error::{f['rule_id']}: {f.get('message','')}")
+          if hits:
+              print(f"\nBLOCKED: {len(hits)} high-signal skill/MCP finding(s)")
+              sys.exit(1)
+          print("PASS: no high-signal skill/MCP findings")
+          PY
