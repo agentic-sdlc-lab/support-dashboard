@@ -1,0 +1,41 @@
+# Dependency gate. PMG mediates package acquisition INSIDE CI, so a malicious
+# dependency fails the build in the Actions log rather than only on a laptop.
+#
+# This is the same control as the local one, placed at the other point where
+# dependencies actually get installed.
+name: dependency-gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  guarded-install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the package guard
+        uses: safedep/pmg@v1
+        with:
+          verbosity: normal
+          disable-telemetry: "true"
+
+      - name: Install project dependencies
+        # pip is wrapped by the guard for the rest of this job. A package the
+        # intelligence database flags as malicious fails here, and the Actions log
+        # carries the reason.
+        run: |
+          python -m pip install --no-cache-dir --prefer-binary -r requirements-dev.txt
+          echo "dependencies installed and mediated"
+
+      - name: Run the protected test
+        run: python -m pytest tests/ -q
