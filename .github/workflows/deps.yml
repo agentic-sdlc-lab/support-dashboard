@@ -1,8 +1,17 @@
-# Dependency gate. PMG mediates package acquisition INSIDE CI, so a malicious
-# dependency fails the build in the Actions log rather than only on a laptop.
+# Dependency gate: the package guard, placed at the other point where dependencies
+# actually get installed.
 #
-# This is the same control as the local one, placed at the other point where
-# dependencies actually get installed.
+# This job deliberately shows three outcomes, because the difference between them is
+# the whole lesson:
+#
+#   1. python -m pip   not shimmed at all           -> installs, job green
+#   2. pip             shimmed, but setup-python's bin
+#                      comes first on PATH          -> installs, job green
+#   3. pmg pip         the guard is unambiguously
+#                      in the path                  -> BLOCKED
+#
+# A gate that is installed and configured is not the same as a gate that is in the
+# path. Steps 1 and 2 are what a reasonable person writes, and both are silent.
 name: dependency-gate
 
 on:
@@ -18,7 +27,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -29,22 +37,29 @@ jobs:
           verbosity: normal
           disable-telemetry: "true"
 
-      # The guard shims `pip`. `python -m pip` goes straight around the shim, so this
-      # job is deliberately split to show both: the bypass passes, the guarded call
-      # blocks. A gate that is installed, configured and green is not the same as a
-      # gate that is in the path.
-      - name: Install the way that BYPASSES the guard
+      - name: Which pip actually runs?
+        run: |
+          echo "pip resolves to: $(command -v pip)"
+          echo "pmg resolves to: $(command -v pmg)"
+          echo "--- PATH order:"; tr ':' '\n' <<< "$PATH" | head -6
+
+      - name: 1. python -m pip  (never shimmed)
         continue-on-error: true
         run: |
-          echo "::warning::python -m pip is not shimmed; the guard never sees this"
-          python -m pip install --no-cache-dir --prefer-binary -r requirements-dev.txt
-          echo "installed WITHOUT mediation"
+          echo "::warning::python -m pip bypasses the shim entirely"
+          python -m pip install --no-cache-dir -r requirements-dev.txt
+          echo "RESULT: installed, unmediated"
 
-      - name: Install the way the guard actually sees
+      - name: 2. bare pip  (shim loses to setup-python on PATH)
+        continue-on-error: true
         run: |
-          python -m pip uninstall -y safedep-test-pkg 2>/dev/null || true
-          pip install --no-cache-dir --prefer-binary -r requirements-dev.txt
-          echo "dependencies installed and mediated"
+          python -m pip uninstall -y safedep-test-pkg >/dev/null 2>&1 || true
+          echo "::warning::setup-python's bin precedes the shim dir, so this is real pip"
+          pip install --no-cache-dir -r requirements-dev.txt
+          echo "RESULT: installed, unmediated"
 
-      - name: Run the protected test
-        run: python -m pytest tests/ -q
+      - name: 3. pmg pip  (the guard is in the path)
+        run: |
+          python -m pip uninstall -y safedep-test-pkg >/dev/null 2>&1 || true
+          pmg pip install --no-cache-dir -r requirements-dev.txt
+          echo "RESULT: this line should never be reached"
