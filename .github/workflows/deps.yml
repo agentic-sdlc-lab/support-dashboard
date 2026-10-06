@@ -29,12 +29,21 @@ jobs:
           verbosity: normal
           disable-telemetry: "true"
 
-      - name: Install project dependencies
-        # pip is wrapped by the guard for the rest of this job. A package the
-        # intelligence database flags as malicious fails here, and the Actions log
-        # carries the reason.
+      # The guard shims `pip`. `python -m pip` goes straight around the shim, so this
+      # job is deliberately split to show both: the bypass passes, the guarded call
+      # blocks. A gate that is installed, configured and green is not the same as a
+      # gate that is in the path.
+      - name: Install the way that BYPASSES the guard
+        continue-on-error: true
         run: |
+          echo "::warning::python -m pip is not shimmed; the guard never sees this"
           python -m pip install --no-cache-dir --prefer-binary -r requirements-dev.txt
+          echo "installed WITHOUT mediation"
+
+      - name: Install the way the guard actually sees
+        run: |
+          python -m pip uninstall -y safedep-test-pkg 2>/dev/null || true
+          pip install --no-cache-dir --prefer-binary -r requirements-dev.txt
           echo "dependencies installed and mediated"
 
       - name: Run the protected test
